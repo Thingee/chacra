@@ -5,7 +5,7 @@ from pecan import expose, abort, request, response, conf
 from pecan.secure import secure
 from webob.static import FileIter
 from chacra.models import Binary, Project
-from chacra.controllers import error
+from chacra.routers import error
 from chacra.auth import basic_auth
 
 logger = logging.getLogger(__name__)
