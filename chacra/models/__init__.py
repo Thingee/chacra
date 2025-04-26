@@ -1,126 +1,101 @@
-import datetime
-from sqlalchemy import create_engine, MetaData, event
-from sqlalchemy.orm import scoped_session, sessionmaker, object_session, mapper
-from sqlalchemy.ext.declarative import declarative_base
-from pecan import conf
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator, Optional, Type
+
+from sqlalchemy.engine.result import ChunkedIteratorResult
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from sqlmodel import create_engine, select, SQLModel
 
 
-class _EntityBase(object):
+# Database configuration
+DATABASE_URL = "postgresql+asyncpg://USER:PASS@HOST:PORT/chacra"
+
+
+class EntityBase(SQLModel):
     """
-    A custom declarative base that provides some Elixir-inspired shortcuts.
+    A custom base class that provides utility methods for SQLModel models.
     """
+
+    _session_factory = None
 
     @classmethod
-    def filter_by(cls, *args, **kwargs):
-        return cls.query.filter_by(*args, **kwargs)
+    def set_session_factory(cls, session_factory) -> None:
+        """
+        Set the session factory for the model.
+        """
+        cls._session_factory = session_factory
 
     @classmethod
-    def get(cls, *args, **kwargs):
-        return cls.query.get(*args, **kwargs)
-
-    def flush(self, *args, **kwargs):
-        object_session(self).flush([self], *args, **kwargs)
-
-    def delete(self, *args, **kwargs):
-        object_session(self).delete(self, *args, **kwargs)
-
-    def as_dict(self):
-        return dict((k, v) for k, v in self.__dict__.items()
-                    if not k.startswith('_'))
-
-    def update_from_json(self, data):
+    @asynccontextmanager
+    async def get_session(cls) -> AsyncGenerator[AsyncSession, None]:
         """
-        We received a JSON blob with updated metadata information
-        that needs to update some fields
+        Asynchronous context manager to provide a session.
         """
-        for key in data.keys():
-            setattr(self, key, data[key])
+        if cls._session_factory is None:
+            raise ValueError(
+                "Session factory is not set. Use `set_session_factory` to "
+                "configure it."
+            )
+
+        async with cls._session_factory() as session:
+            yield session
+
+    @classmethod
+    async def get(cls, **kwargs) -> Optional[Type["EntityBase"]]:
+        """
+        Retrieve a single record matching the given filters.
+        """
+        async with cls.get_session() as session:
+            statement = select(cls).filter_by(**kwargs)
+            result = await session.execute(statement)
+            return result.unique().scalars().first()
+
+    @classmethod
+    async def get_all(cls) -> ChunkedIteratorResult:
+        """
+        Retrieve all records of the model.
+        """
+        async with cls.get_session() as session:
+            statement = select(cls)
+            result = await session.execute(statement)
+            return result.unique().scalars().all()
+
+    @classmethod
+    async def filter_by(cls, **kwargs) -> ChunkedIteratorResult:
+        """
+        Retrieve records matching the given filters.
+        """
+        async with cls.get_session() as session:
+            statement = select(cls).filter_by(**kwargs)
+            result = await session.execute(statement)
+            return result.unique().scalars().all()
+
+    @classmethod
+    async def get_or_create(cls, **kwargs) -> Optional[Type["EntityBase"]]:
+        async with cls.get_session() as session:
+            statement = select(cls).filter_by(**kwargs)
+            instance = await session.execute(statement)
+            result = instance.scalars().first()
+
+            if result:
+                return result
+
+            instance = cls(**kwargs)
+            session.add(instance)
+            await session.commit()
+            await session.refresh(instance)
+
+            return instance
 
 
-Session = scoped_session(sessionmaker())
-metadata = MetaData()
-Base = declarative_base(cls=_EntityBase)
-Base.query = Session.query_property()
-
-
-# Listeners:
-
-@event.listens_for(mapper, 'init')
-def auto_add(target, args, kwargs):
-    Session.add(target)
-
-
-def update_timestamp(mapper, connection, target):
+async def create_db_and_tables() -> None:
     """
-    Automate the 'modified' attribute when a model changes
+    Create all tables in the database.
     """
-    target.modified = datetime.datetime.now(datetime.UTC)
+    engine = AsyncEngine(create_engine(DATABASE_URL, echo=True))
+    EntityBase.set_session_factory(
+        sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    )
 
-
-# Utilities:
-
-def get_or_create(model, **kwargs):
-    instance = model.filter_by(**kwargs).first()
-    if instance:
-        return instance
-    else:
-        instance = model(**kwargs)
-        commit()
-        return instance
-
-
-def init_model():
-    """
-    This is a stub method which is called at application startup time.
-
-    If you need to bind to a parse database configuration, set up tables or
-    ORM classes, or perform any database initialization, this is the
-    recommended place to do it.
-
-    For more information working with databases, and some common recipes,
-    see http://pecan.readthedocs.org/en/latest/databases.html
-
-    For creating all metadata you would use::
-
-        Base.metadata.create_all(conf.sqlalchemy.engine)
-
-    """
-    conf.sqlalchemy.engine = _engine_from_config(conf.sqlalchemy)
-    Session.configure(bind=conf.sqlalchemy.engine)
-
-
-def _engine_from_config(configuration):
-    configuration = dict(configuration)
-    url = configuration.pop('url')
-    return create_engine(url, **configuration)
-
-
-def start():
-    Session()
-    metadata.bind = conf.sqlalchemy.engine
-
-
-def start_read_only():
-    start()
-
-
-def commit():
-    Session.commit()
-
-
-def rollback():
-    Session.rollback()
-
-
-def clear():
-    Session.remove()
-    Session.close()
-
-
-def flush():
-    Session.flush()
-
-
-from .projects import Project  # noqa
-from .binaries import Binary  # noqa
-from .repos import Repo  # noqa
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)

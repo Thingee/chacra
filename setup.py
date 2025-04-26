@@ -15,10 +15,9 @@ setup(
     author_email='adeza@redhat.com',
     license = "MIT",
     install_requires=[
-        "pecan",
-        "sqlalchemy==1.3.0",
-        "psycopg2-binary==2.9.9",
-        "pecan-notario",
+        "asyncpg~=0.30.0",
+        "fastapi~=0.115.12",
+        "sqlalchemy~=1.4.54",
         "python-statsd",
         "requests",
         "celery<=6.2.5",
@@ -43,9 +42,9 @@ setup(
         'Topic :: Utilities',
         'Operating System :: MacOS :: MacOS X',
         'Operating System :: POSIX',
-        'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',
+        'Programming Language :: Python :: 3.13',
     ],
     entry_points="""
         [pecan.command]
