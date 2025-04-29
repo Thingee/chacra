@@ -6,9 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import create_engine, select, SQLModel
 
+from chacra.config import CFG
 
-# Database configuration
-DATABASE_URL = "postgresql+asyncpg://USER:PASS@HOST:PORT/chacra"
+
+DATABASE_URL = CFG.database_url
 
 
 class EntityBase(SQLModel):
