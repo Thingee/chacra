@@ -1,11 +1,11 @@
 from collections import defaultdict
-import os
 import errno
 import logging
-from pecan import conf
-from pecan.templating import MakoRenderer, ExtraNamespace
+import os
 
-from chacra import models
+from chacra.config import CFG
+from chacra.models.projects import Project
+from chacra.models.repos import Repo
 from chacra.constants import DISTRIBUTIONS, REPO_OPTION_KEYS
 
 logger = logging.getLogger(__name__)
@@ -58,16 +58,11 @@ def repo_paths(repo):
     paths = {}
 
     # e.g. ceph-deploy/main/ubuntu/trusty
-    paths['relative'] = '{ref}/{sha1}/{distro}/{version}/flavors/{flavor}'.format(
-        ref=repo.ref,
-        sha1=repo.sha1,
-        distro=repo.distro,
-        version=repo.distro_version,
-        flavor=repo.flavor
-    )
+    paths['relative'] = (f"{repo.ref}/{repo.sha1}/{repo.distro}/"
+                         "{repo.version}/flavors/{repo.flavor}")
 
     # e.g. /opt/repos/ceph-deploy
-    paths['root'] = os.path.join(conf.repos_root, repo.project.name)
+    paths['root'] = os.path.join(CFG.repos_root, repo.project.name)
 
     paths['absolute'] = os.path.join(paths['root'], paths['relative'])
 
@@ -80,7 +75,7 @@ def get_related_projects(project, repo_config=None):
     for other projects (defined via configuration).
     """
     matches = defaultdict(list)
-    repo_config = repo_config or getattr(conf, 'repos', {})
+    repo_config = repo_config or getattr(CFG, 'repos', {})
     if not repo_config:
         return {}
     for project_name in repo_config.keys():
@@ -119,7 +114,7 @@ def get_combined_repos(project, repo_config=None):
     This helper will always return a list because that is the expectation from
     the configuration.
     """
-    repo_config = repo_config or getattr(conf, 'repos', {})
+    repo_config = repo_config or getattr(CFG, 'repos', {})
     if not repo_config:
         return []
     return repo_config.get(project, {}).get('combined', [])
@@ -134,7 +129,7 @@ def get_extra_repos(project, ref=None, repo_config=None):
     If nothing is defined an empty dictionary is returned, so that consumers
     can treat the return values always as a dictionary
     """
-    repo_config = repo_config or getattr(conf, 'repos', {})
+    repo_config = repo_config or getattr(CFG, 'repos', {})
     project_ref = ref or 'all'
     if not repo_config:
         logging.debug('no repos configuration defined for extra repositories')
@@ -157,27 +152,29 @@ def get_extra_repos(project, ref=None, repo_config=None):
     distinct_ref.update(all_refs)
 
     if not distinct_ref:
-        logger.warning('%s has no matching repositories for ref: %s', project, project_ref)
+        logger.warning('%s has no matching repositories for ref: %s', project,
+                       project_ref)
     return distinct_ref
 
 
-def get_extra_binaries(project_name, distro, distro_version, distro_versions=None, ref=None, sha1=None):
+def get_extra_binaries(project_name, distro, distro_version,
+                       distro_versions=None, ref=None, sha1=None):
     """
     Try to match a given repository with the distinctive  project/ref/distro
     information and return a list of associated binaries
     """
     binaries = []
-    project = models.Project.query.filter_by(name=project_name).first()
+    project = Project.filter_by(name=project_name).first()
     if not project:
         logger.warning(
             '%s does not exist but is configured, no binaries fetched',
             project_name
         )
         return []
-    repo_query = models.Repo.query.filter_by(project=project)
+    repo_query = Repo.query.filter_by(project=project)
 
     if distro_versions:
-        repo_query = repo_query.filter(models.Repo.distro_version.in_(distro_versions))
+        repo_query = repo_query.filter(Repo.distro_version.in_(distro_versions))
     else:
         repo_query = repo_query.filter_by(distro_version=distro_version)
 
@@ -219,16 +216,16 @@ def makedirs(path):
             raise
 
 
-def render_mako_template(template_name, data):
-    """
-    Will render the given mako template and return it as a string.
+# def render_mako_template(template_name, data):
+#     """
+#     Will render the given mako template and return it as a string.
 
-    The template_name must exist in chacra/templates.
-    """
-    #TODO: should this path be configurable?
-    template_dir = os.path.join(os.path.dirname(__file__), "templates")
-    engine = MakoRenderer(template_dir, ExtraNamespace())
-    return engine.render(template_name, data)
+#     The template_name must exist in chacra/templates.
+#     """
+#     #TODO: should this path be configurable?
+#     template_dir = os.path.join(os.path.dirname(__file__), "templates")
+#     engine = MakoRenderer(template_dir, ExtraNamespace())
+#     return engine.render(template_name, data)
 
 
 def get_distributions_file_context(project_name):
@@ -237,7 +234,7 @@ def get_distributions_file_context(project_name):
     to render the project specific distributions file.
     """
     data = dict()
-    dist_config = conf.distributions.to_dict()
+    dist_config = CFG.distributions.to_dict()
     data['data'] = dist_config.get('defaults', {})
     project_overrides = dist_config.get(project_name, {})
     data['data'].update(project_overrides)
@@ -245,19 +242,19 @@ def get_distributions_file_context(project_name):
     return data
 
 
-def create_distributions_file(project_name, distributions_path):
-    """
-    Will create a project specific distributions file to be used by reprepo.
-    """
-    data = get_distributions_file_context(project_name)
-    contents = render_mako_template("distributions", data)
-    contents = as_string(contents)
-    with open(distributions_path, "w") as f:
-        try:
-            f.write(contents)
-        except (OSError, IOError):
-            logger.exception('Could not create %s' % distributions_path)
-            raise
+# def create_distributions_file(project_name, distributions_path):
+#     """
+#     Will create a project specific distributions file to be used by reprepo.
+#     """
+#     data = get_distributions_file_context(project_name)
+#     contents = render_mako_template("distributions", data)
+#     contents = as_string(contents)
+#     with open(distributions_path, "w") as f:
+#         try:
+#             f.write(contents)
+#         except (OSError, IOError):
+#             logger.exception('Could not create %s' % distributions_path)
+#             raise
 
 
 def reprepro_confdir(project_name):
@@ -268,7 +265,7 @@ def reprepro_confdir(project_name):
     If the configuration directory or distributions file do not exist, they
     will be created.
     """
-    confdir_path = os.path.join(conf.distributions_root, project_name)
+    confdir_path = os.path.join(CFG.distributions_root, project_name)
     distributions_path = os.path.join(confdir_path, "distributions")
     if not os.path.exists(distributions_path):
         makedirs(confdir_path)
@@ -345,7 +342,8 @@ def reprepro_commands(repository_path, binary,
                 # unable to add it back to the repos, so give up with
                 # a warning.
                 logger.warning(
-                    "%s is generic but no fallback or distro versions where defined"
+                    "%s is generic but no fallback or distro versions where"
+                    " defined", binary.name
                 )
                 logger.warning("no reprepro command will be issued")
                 return []
@@ -366,9 +364,11 @@ def reprepro_commands(repository_path, binary,
     return commands
 
 def repository_is_disabled(project_name, repo_config=None):
-    repo_config = repo_config or getattr(conf, 'repos', {})
-    disable_unconfigured_repos = getattr(conf, 'disable_unconfigured_repos', False)
-    logger.debug('checking if repository should be disabled for project: %s', project_name)
+    repo_config = repo_config or getattr(CFG, 'repos', {})
+    disable_unconfigured_repos = getattr(CFG, 'disable_unconfigured_repos',
+                                         False)
+    logger.debug('checking if repository should be disabled for project: %s',
+                 project_name)
     if disable_unconfigured_repos:
         logger.debug('repository creation for unconfigured repos is disabled')
         # check if the repo exists in the repo configuration and it is not
@@ -376,19 +376,24 @@ def repository_is_disabled(project_name, repo_config=None):
         if repo_config.get(project_name):
             # it exists, but it may be explicitly disabled
             if repo_config[project_name].get('disabled'):
-                logger.info('project: %s is explicitly disabled in config, will skip repo creation', project_name)
+                logger.info('project: %s is explicitly disabled in config, '
+                            'will skip repo creation', project_name)
                 return True
             # it exists but it is not explicitly disabled
             else:
-                logger.info('project: %s is explicitly enabled in config, repo will be created/updated', project_name)
+                logger.info('project: %s is explicitly enabled in config, '
+                            'repo will be created/updated', project_name)
                 return False
-        logger.info('project: %s is unconfigured, will skip repo creation', project_name)
+        logger.info('project: %s is unconfigured, will skip repo creation',
+                    project_name)
         return True
     if repo_config.get(project_name, {}).get('disabled', False):
-        logger.info('project: %s is explicitly disabled in config, will skip repo creation', project_name)
+        logger.info('project: %s is explicitly disabled in config, will skip '
+                    'repo creation', project_name)
         return True
     if not repo_config:
-        logger.info('no specific repo configuration found, will create repo for project: %s', project_name)
+        logger.info('no specific repo configuration found, will create repo '
+                    'for project: %s', project_name)
         return False
     # if unconfigured repos are not disabled and no repo is configured this
     # means this should not be disabled

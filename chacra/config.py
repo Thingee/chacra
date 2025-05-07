@@ -5,9 +5,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    server_port: int
-    server_host: str
     database_url: str
+    binary_root: str
+    repo_root: str
 
     model_config = SettingsConfigDict(env_file=".env")
 

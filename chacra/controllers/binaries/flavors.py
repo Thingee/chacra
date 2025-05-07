@@ -6,7 +6,7 @@ from pecan.secure import secure
 from webob.static import FileIter
 from chacra import models, util
 from chacra.controllers import error
-from chacra.controllers.util import repository_is_automatic
+from chacra.routers.util import repository_is_automatic
 from chacra.controllers.binaries import BinaryController
 from chacra.auth import basic_auth
 

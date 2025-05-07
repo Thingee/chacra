@@ -1,8 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Optional, TYPE_CHECKING
 
 from sqlmodel import Field, Relationship
 
+from chacra.routers import util
 from chacra.models import EntityBase
 
 
@@ -43,3 +44,29 @@ class Binary(EntityBase, table=True):
     repo: Optional["Repo"] = Relationship(
         back_populates="binaries", sa_relationship_kwargs={"lazy": "selectin"}
     )
+
+    @property
+    def last_changed(self):
+        if self.modified > self.created:
+            last = self.modified
+        else:
+            last = self.created
+
+        now = datetime.now(UTC)
+        difference = now - last.replace(tzinfo=UTC)
+        formatted = util.ReadableSeconds(difference.seconds)
+        return f"{formatted} ago"
+
+    def get_repo_type(self):
+        extension_map = {
+            'rpm': 'rpm',
+            'deb': 'deb',
+            'ddeb': 'deb',
+            'dsc': 'deb',
+            'changes': 'deb'
+        }
+
+        # XXX This is very naive, but 'deb' repos are the only ones that
+        # will have .tar or .tar.gz or just .gz extensions for source
+        # files, so fallback to that
+        return extension_map.get(self.extension, 'deb')

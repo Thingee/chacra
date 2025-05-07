@@ -88,6 +88,19 @@ class EntityBase(SQLModel):
 
             return instance
 
+    @classmethod
+    async def create(cls, **kwargs) -> Optional[Type["EntityBase"]]:
+        """
+        Create a new record in the database.
+        """
+        async with cls.get_session() as session:
+            instance = cls(**kwargs)
+            session.add(instance)
+            await session.commit()
+            await session.refresh(instance)
+
+            return instance
+
 
 async def create_db_and_tables() -> None:
     """
