@@ -45,6 +45,26 @@ class Binary(EntityBase, table=True):
         back_populates="binaries", sa_relationship_kwargs={"lazy": "selectin"}
     )
 
+    def as_dict(self):
+        return {
+            "name": self.name,
+            "project": self.project.name,
+            "created": self.created,
+            "modified": self.modified,
+            "signed": self.signed,
+            "size": self.size,
+            "path": self.path,
+            "last_changed": self.last_changed,
+            "built_by": self.built_by,
+            "distro": self.distro,
+            "distro_version": self.distro_version,
+            "checksum": self.checksum,
+            "arch": self.arch,
+            "ref": self.ref,
+            "sha1": self.sha1,
+            "flavor": self.flavor,
+        }
+
     @property
     def last_changed(self):
         if self.modified > self.created:

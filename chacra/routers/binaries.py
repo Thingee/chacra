@@ -136,28 +136,10 @@ async def get_binaries(project_name: str, ref: str, sha1: str, distro: str,
         arch=arch,
     )
 
-    returned_keys = [
-        "name",
-        "created",
-        "modified",
-        "signed",
-        "size",
-        "path",
-        "distro",
-        "distro_version",
-        "arch",
-        "ref",
-        "sha1",
-        "flavor",
-        "checksum",
-        "last_changed",
-    ]
-
     resp = {}
-    for key in returned_keys:
-        resp[key] = getattr(binaries, key)
-
-    return {binaries.name: resp}
+    for binary in binaries:
+        resp[binary.name] = binary.as_dict()
+    return resp
 
 
 @router.head("/{project_name}/{ref}/{sha1}/{distro}/{distro_version}/{arch}/")
@@ -273,4 +255,128 @@ async def upload_binary(project_name: str, ref: str, sha1: str, distro: str,
     # Mark related repositories for rebuild
     await mark_related_repos(binary)
 
+    return JSONResponse(content={}, status_code=response_code)
+
+
+@router.head("/{project_name}/{ref}/{sha1}/{distro}/{distro_version}/{arch}/"
+             "flavors/{flavor}/")
+async def head_flavors(project_name: str, ref: str, sha1: str, distro: str,
+                       distro_version: str, arch: str, flavor: str) -> None:
+    project = await _get_objects_or_404(Project, name=project_name)
+    await _get_objects_or_404(
+        Binary,
+        project=project,
+        sha1=sha1,
+        ref=ref,
+        distro=distro,
+        distro_version=distro_version,
+        arch=arch,
+        flavor=flavor
+    )
+
+
+@router.get("/{project_name}/{ref}/{sha1}/{distro}/{distro_version}/{arch}/"
+            "flavors/")
+async def get_all_flavors(project_name: str, ref: str, sha1: str, distro: str,
+                          distro_version: str, arch: str
+                          ) -> Dict[str, List[str]]:
+    project = await _get_objects_or_404(Project, name=project_name)
+    binaries = await _get_objects_or_404(
+        Binary,
+        project=project,
+        sha1=sha1,
+        ref=ref,
+        distro=distro,
+        distro_version=distro_version,
+        arch=arch
+    )
+
+    resp = {}
+    flavors = {b.flavor for b in binaries}
+
+    for flavor in flavors:
+        resp[flavor] = {b.name for b in binaries if b.flavor == flavor}
+    return resp
+
+
+@router.get("/{project_name}/{ref}/{sha1}/{distro}/{distro_version}/{arch}/"
+            "flavors/{flavor}/")
+async def get_flavor(project_name: str, ref: str, sha1: str, distro: str,
+                     distro_version: str, arch: str, flavor: str) -> Dict:
+    project = await _get_objects_or_404(Project, name=project_name)
+    binaries = await _get_objects_or_404(
+        Binary,
+        project=project,
+        sha1=sha1,
+        ref=ref,
+        distro=distro,
+        distro_version=distro_version,
+        arch=arch,
+        flavor=flavor
+    )
+
+    resp = {}
+    for binary in binaries:
+        resp[binary.name] = binary.as_dict()
+    return resp
+
+
+@router.post("/{project_name}/{ref}/{sha1}/{distro}/{distro_version}/{arch}/"
+             "flavors/{flavor}/")
+async def upload_flavor(project_name: str, ref: str, sha1: str, distro: str,
+                        distro_version: str, arch: str, flavor: str,
+                        file: UploadFile = File(...),
+                        force: bool = False) -> Dict:
+    project = await _get_objects_or_404(Project, name=project_name)
+    binary = await Binary.get(
+        name=file.filename,
+        project=project,
+        ref=ref,
+        sha1=sha1,
+        distro=distro,
+        distro_version=distro_version,
+        arch=arch,
+        flavor=flavor
+    )
+    if binary and not force:
+        raise HTTPException(
+            status_code=400,
+            detail="Resource already exists and 'force' key was not used"
+        )
+    # Save the uploaded file
+    dir_path = os.path.join(
+        CFG.binary_root,
+        project.name,
+        ref,
+        sha1,
+        distro,
+        distro_version,
+        arch,
+        flavor
+    )
+    os.makedirs(dir_path, exist_ok=True)
+    file_path = os.path.join(dir_path, file.filename)
+    with open(file_path, "wb") as f:
+        content = await file.read()
+        f.write(content)
+    # Create or update the binary record
+    response_code = 201
+    if not binary:
+        binary = await Binary.create(
+            name=file.filename,
+            project=project,
+            ref=ref,
+            sha1=sha1,
+            distro=distro,
+            distro_version=distro_version,
+            arch=arch,
+            flavor=flavor,
+            path=file_path,
+            size=os.path.getsize(file_path)
+        )
+    else:
+        await binary.update(path=file_path, size=os.path.getsize(file_path))
+        response_code = 200
+    # Mark related repositories for rebuild
+    await mark_related_repos(binary)
     return JSONResponse(content={}, status_code=response_code)
