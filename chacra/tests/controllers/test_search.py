@@ -1,5 +1,5 @@
 from chacra.models import Project, Binary
-from chacra.controllers import search
+from chacra.routers import search
 
 
 class TestSearchController(object):

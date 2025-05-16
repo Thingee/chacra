@@ -62,9 +62,19 @@ class EntityBase(SQLModel):
             return result.unique().scalars().all()
 
     @classmethod
-    async def filter_by(cls, **kwargs) -> ChunkedIteratorResult:
+    async def filter(cls, *filters) -> ChunkedIteratorResult:
         """
         Retrieve records matching the given filters.
+        """
+        async with cls.get_session() as session:
+            statement = select(cls).where(*filters)
+            result = await session.execute(statement)
+            return result.unique().scalars().all()
+
+    @classmethod
+    async def filter_by(cls, **kwargs) -> ChunkedIteratorResult:
+        """
+        Retrieve records by exact match from the given filters.
         """
         async with cls.get_session() as session:
             statement = select(cls).filter_by(**kwargs)

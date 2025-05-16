@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from .models import create_db_and_tables
 from .routers import binaries
+from .routers import search
 
 
 log = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(binaries.router)
+app.include_router(search.router)
 
 
 @app.get("/")
