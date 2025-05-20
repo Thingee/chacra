@@ -2,7 +2,7 @@ import os
 from typing import Annotated, Dict, List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from chacra.auth import authenticate
 from chacra.config import CFG
@@ -261,6 +261,30 @@ async def upload_binary(project_name: str, ref: str, sha1: str, distro: str,
     await mark_related_repos(binary)
 
     return JSONResponse(content={}, status_code=response_code)
+
+
+@router.get("/{project_name}/{ref}/{sha1}/{distro}/{distro_version}/{arch}/"
+            "{binary_name}/")
+async def download_binary(
+    project_name: str, ref: str, sha1: str, distro: str,
+    distro_version: str, arch: str, binary_name: str
+) -> FileResponse:
+    project = await _get_objects_or_404(Project, name=project_name)
+    binary = await _get_objects_or_404(
+        Binary,
+        project=project,
+        sha1=sha1,
+        ref=ref,
+        distro=distro,
+        distro_version=distro_version,
+        arch=arch,
+        name=binary_name
+    )
+
+    if not binary:
+        raise HTTPException(status_code=404)
+
+    return FileResponse(binary[0].path)
 
 
 @router.head("/{project_name}/{ref}/{sha1}/{distro}/{distro_version}/{arch}/"
