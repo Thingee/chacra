@@ -1,4 +1,4 @@
-from chacra.controllers import health
+from chacra.routers import health
 
 
 class TestHealthController(object):
