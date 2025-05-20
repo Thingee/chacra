@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     database_url: str
     binary_root: str
     repo_root: str
+    api_user: str
+    api_key: str
 
     model_config = SettingsConfigDict(env_file=".env")
 

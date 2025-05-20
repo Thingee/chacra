@@ -1,9 +1,10 @@
 import os
-from typing import Dict, List
+from typing import Annotated, Dict, List
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
+from chacra.auth import authenticate
 from chacra.config import CFG
 from chacra.models.binaries import Binary
 from chacra.models.projects import Project
@@ -40,7 +41,10 @@ async def list_projects() -> Dict[str, List[str]]:
 
 
 @router.post("/{project_name}/")
-async def create_project(project_name: str) -> Dict:
+async def create_project(
+        project_name: str,
+        auth: Annotated[str, Depends(authenticate)]
+    ) -> Dict:
     await Project.get_or_create(name=project_name)
     return {}
 
@@ -197,6 +201,7 @@ async def mark_related_repos(binary: Binary) -> None:
 @router.post("/{project_name}/{ref}/{sha1}/{distro}/{distro_version}/{arch}/")
 async def upload_binary(project_name: str, ref: str, sha1: str, distro: str,
                         distro_version: str, arch: str,
+                        auth: Annotated[str, Depends(authenticate)],
                         file: UploadFile = File(...),
                         force: bool = False) -> Dict:
     project = await _get_objects_or_404(Project, name=project_name)
@@ -325,6 +330,7 @@ async def get_flavor(project_name: str, ref: str, sha1: str, distro: str,
              "flavors/{flavor}/")
 async def upload_flavor(project_name: str, ref: str, sha1: str, distro: str,
                         distro_version: str, arch: str, flavor: str,
+                        auth: Annotated[str, Depends(authenticate)],
                         file: UploadFile = File(...),
                         force: bool = False) -> Dict:
     project = await _get_objects_or_404(Project, name=project_name)
