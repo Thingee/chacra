@@ -111,6 +111,15 @@ class EntityBase(SQLModel):
 
             return instance
 
+    async def update(self, **kwargs) -> Optional[Type["EntityBase"]]:
+        async with self.get_session() as session:
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+            session.add(self)
+            await session.commit()
+            await session.refresh(self)
+            return self
+
 
 async def create_db_and_tables() -> None:
     """

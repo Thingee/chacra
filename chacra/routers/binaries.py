@@ -263,6 +263,51 @@ async def upload_binary(project_name: str, ref: str, sha1: str, distro: str,
     return JSONResponse(content={}, status_code=response_code)
 
 
+@router.put("/{project_name}/{ref}/{sha1}/{distro}/{distro_version}/{arch}/"
+            "{binary_name}/")
+async def update_binary(
+    project_name: str, ref: str, sha1: str, distro: str,
+    distro_version: str, arch: str, binary_name: str,
+    auth: Annotated[str, Depends(authenticate)],
+    file: UploadFile = File(...),
+) -> JSONResponse:
+    project = await _get_objects_or_404(Project, name=project_name)
+    binary = await Binary.get(
+        name=binary_name,
+        project=project,
+        ref=ref,
+        sha1=sha1,
+        distro=distro,
+        distro_version=distro_version,
+        arch=arch
+    )
+
+    if not binary:
+        raise HTTPException(status_code=404)
+
+    dir_path = os.path.join(
+        CFG.binary_root,
+        project.name,
+        ref,
+        sha1,
+        distro,
+        distro_version,
+        arch
+    )
+    os.makedirs(dir_path, exist_ok=True)
+    file_path: str = os.path.join(dir_path, file.filename)
+
+    with open(file_path, "wb") as f:
+        content = await file.read()
+        f.write(content)
+
+    await binary.update(path=file_path, size=os.path.getsize(file_path))
+
+    await mark_related_repos(binary)
+
+    return JSONResponse(content={}, status_code=200)
+
+
 @router.get("/{project_name}/{ref}/{sha1}/{distro}/{distro_version}/{arch}/"
             "{binary_name}/")
 async def download_binary(
